@@ -49,16 +49,15 @@ int main(int argc, char const *argv[]) {
     readcron();
     return 0;
 }
-
 void* run(void* arg)
 {    
     char* cronf = (char*) arg;    
     char command[100000];
     char format[100000];
     parse(cronf,command,format);
-    int time[6];
-    convert_time(time,format);
-    int deter = check(time);
+    int timer[6];
+    convert_time(timer,format);
+    int deter = check(timer);
     if(deter!=0) pthread_exit(NULL);
     // printf("%s\n%s\n",command,format);
     // for(int j=0;j<5;j++){
@@ -68,10 +67,15 @@ void* run(void* arg)
     
     while(1){
         while(!safe);
-        if(exec_time(time)){
+        // printf("%d\n",exec_time(timer));
+        if(exec_time(timer)){
             system(command);
         }
-        sleep(60);
+        time_t rawtime;
+        time(&rawtime);
+        struct tm *ptm = localtime(&rawtime);
+        int max_wait = 60 - ptm->tm_sec;
+        sleep(max_wait);
     }
 }
 int exec_time(int arr[]){
