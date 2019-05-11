@@ -22,22 +22,12 @@
 #define BYPASS_RUN 111
 
 char* path = "/home/duhbuntu/sisop/FP/crontab.data";
-pthread_t cs[100000];
+pthread_t cs[1000];
 int safe = 1;
 int kill_run = -1;
+char argument[1000][1000];
 
-typedef struct Node{
-    char string[100000];
-    int search;
-    struct Node* next;
-}node;
-
-typedef struct List{
-    node* head;
-    node* tail;
-}list;
-
-void ins(list* num,char* str);
+void ins(int pos,char* str);
 void* run(void* arg);
 void readcron();
 void convert_time(int arr[], char* str);
@@ -46,39 +36,55 @@ int exec_time(int arr[]);
 void parse(char* cronf,char* command, char* format);
 
 int main(int argc, char const *argv[]) {
+    pid_t pid, sid;
+    pid = fork();
+    if (pid < 0) {
+        exit(EXIT_FAILURE);
+    }
+    if (pid > 0) {
+        exit(EXIT_SUCCESS);
+    }
+    umask(0);
+    sid = setsid();
+    if (sid < 0) {
+        exit(EXIT_FAILURE);
+    }
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
     readcron();
     return 0;
 }
 void* run(void* arg)
 {    
-    char* cronf = (char*) arg;    
+    int i;
+    pthread_t id = pthread_self();
+    for(i=0;i<1000;i++)
+    {
+        if(cs[i]==id) break;
+    }
     char command[100000];
     char format[100000];
-    parse(cronf,command,format);
+    parse(argument[i],command,format);
     int timer[6];
     convert_time(timer,format);
     int deter = check(timer);
+    int tunggu;
     if(deter!=0) pthread_exit(NULL);
-    // printf("%s\n%s\n",command,format);
-    // for(int j=0;j<5;j++){
-    //     printf("%d ",time[j]);
-    // }
-    // printf("\n");
-    
-    while(1){
-        while(!safe);
-        // printf("%d\n",exec_time(timer));
-        if(exec_time(timer)){
-            system(command);
+    while(!safe);
+    if(exec_time(timer)){
+        pid_t child;
+        child = fork();
+        if(child==0){
+            execl("/bin/bash","/bin/bash","-c",command,NULL);
         }
-        time_t rawtime;
-        time(&rawtime);
-        struct tm *ptm = localtime(&rawtime);
-        int max_wait = 60 - ptm->tm_sec;
-        sleep(max_wait);
+        else waitpid(child, &tunggu, 0);
+        // system(command);
     }
+    pthread_exit(NULL);
 }
-int exec_time(int arr[]){
+int exec_time(int arr[])
+{
     time_t rawtime;
     time(&rawtime);
     struct tm *ptm = localtime(&rawtime);
@@ -86,7 +92,7 @@ int exec_time(int arr[]){
          ((ptm->tm_min == arr[0]) || (arr[0] == BYPASS_RUN)) &&
          ((ptm->tm_hour == arr[1]) || (arr[1] == BYPASS_RUN)) &&
          ((ptm->tm_mday == arr[2]) || (arr[2] == BYPASS_RUN)) &&
-         ((ptm->tm_mon == arr[3]) || (arr[3] == BYPASS_RUN)) &&
+         ((ptm->tm_mon == arr[3]-1) || (arr[3] == BYPASS_RUN)) &&
          ((ptm->tm_wday == arr[4]) || (arr[4] == BYPASS_RUN))
         ) return 1;
     
@@ -122,65 +128,44 @@ void readcron()
 {
     time_t now = 0;
     struct stat sh;
-    list cmd;
-    cmd.head = NULL;
-    cmd.tail = NULL;
     int next_thread=0; 
     safe = 1;  
     while(1){
         stat(path,&sh);
-        if(now == 0 || now < sh.st_mtime){
-            safe = 0;
-            FILE *fd;
-            char buffer[1000000];
-            fd = fopen(path,"r");
-            if(fd == NULL){
-                perror("Error membuka file:");
-                exit(EXIT_FAILURE);
-            }
-            int signal = 0;
-            while(fgets(buffer,1000000,fd)!=NULL){
-                if(strcmp(buffer,"\n")==0) continue;
-                signal = 0;
-                node* tmp = cmd.head;
-                while(tmp!=NULL && signal!=1){
-                    if(strcmp(buffer,tmp->string)==0){
-                        signal = 1;
-                        tmp->search = 1;
-                        break;
-                    }
-                    tmp=tmp->next;
-                }
-                if(signal==0){
-                    ins(&cmd,buffer);
-                    char temp[10000];
-                    strcpy(temp,buffer);
-                    pthread_create(&cs[next_thread],NULL,run,(void*) temp);
-                    next_thread++;
-                }
-                memset(buffer,0,sizeof(buffer));
-            }
-            fclose(fd);
-            now = sh.st_mtime;
-            safe = 1;
+        FILE *fd;
+        char buffer[1000000];
+        fd = fopen(path,"r");
+        if(fd == NULL){
+            perror("Error membuka file:");
+            exit(EXIT_FAILURE);
         }
+        while(fgets(buffer,1000000,fd)!=NULL){
+            if(strcmp(buffer,"\n")==0) continue;
+            ins(next_thread,buffer);
+            pthread_create(&cs[next_thread],NULL,run,NULL);
+            next_thread++;
+            memset(buffer,0,sizeof(buffer));
+        }
+        for(int i=0;i<next_thread;i++)
+        {
+            pthread_join(cs[i],NULL);
+        }
+        next_thread=0;
+        fclose(fd);
+        now = sh.st_mtime;
+        safe = 1;
         memset(&sh,0,sizeof(sh));
+        time_t rawtime;
+        time(&rawtime);
+        struct tm *ptm = localtime(&rawtime);
+        int max_wait = 60 - ptm->tm_sec;
+        sleep(max_wait);
     }
 }
-void ins(list* num,char* str)
+void ins(int num,char* str)
 {
-    node* now = (node*) malloc(sizeof(node));
-    strcpy(now->string,str);
-    now->search = 0;
-    now->next = NULL;
-    if(num->head==NULL){
-        num->head=now;
-        num->tail=now;
-    }
-    else{
-        num->tail->next = now;
-        num->tail = now;
-    }
+    strcpy(argument[num],"\0");
+    strcpy(argument[num],str);
 }
 int check(int arr[])
 {
