@@ -128,8 +128,7 @@ void readcron()
 {
     time_t now = 0;
     struct stat sh;
-    int next_thread=0; 
-    safe = 1;  
+    int next_thread=0;   
     while(1){
         stat(path,&sh);
         FILE *fd;
@@ -153,7 +152,6 @@ void readcron()
         next_thread=0;
         fclose(fd);
         now = sh.st_mtime;
-        safe = 1;
         memset(&sh,0,sizeof(sh));
         time_t rawtime;
         time(&rawtime);
